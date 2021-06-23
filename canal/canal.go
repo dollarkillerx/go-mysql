@@ -412,7 +412,6 @@ func (c *Canal) checkBinlogRowFormat() error {
 }
 
 func (c *Canal) prepareSyncer() error {
-	fmt.Println("inin.......................")
 	cfg := replication.BinlogSyncerConfig{
 		ServerID:                c.cfg.ServerID,
 		Flavor:                  c.cfg.Flavor,

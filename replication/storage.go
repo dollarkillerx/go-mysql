@@ -84,3 +84,21 @@ func (s *Storage) GetTableMapEvent(key uint64) (*TableMapEvent, error) {
 
 	return &result, nil
 }
+
+func (s *Storage) Test() {
+	err := s.Db.View(func(txn *badger.Txn) error {
+		iterator := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer iterator.Close()
+
+		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+			fmt.Println("iterator.Item().Key():  ", string(iterator.Item().Key()))
+		}
+
+		return nil
+	})
+	if err != nil {
+		fmt.Println(err, "           TEST .........")
+	}
+
+	fmt.Println("Test Over")
+}

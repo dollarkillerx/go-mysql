@@ -3,12 +3,12 @@ package replication
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"log"
 	"os"
-	"reflect"
 	"sync/atomic"
 	"time"
 
@@ -301,14 +301,47 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 		event, ex := p.tables[te.TableID]
 		if !ex {
 			p.tables[te.TableID] = te
-			err := p.storage.SetTableMapEvent(te.TableID, *te)
+
+			// 他清空太频繁了 io成本非常高
+			mapEvent, err := p.storage.GetTableMapEvent(te.TableID)
 			if err != nil {
-				log.Println(err)
+				// 空的
+				err := p.storage.SetTableMapEvent(te.TableID, *te)
+				if err != nil {
+					log.Println(err)
+				}
+			} else {
+				// 非空进行判断
+				me, err := json.Marshal(mapEvent)
+				if err != nil {
+					return nil, err
+				}
+				tr, err := json.Marshal(te)
+				if err != nil {
+					return nil, err
+				}
+
+				if string(me) != string(tr) {
+					p.tables[te.TableID] = te
+					err := p.storage.SetTableMapEvent(te.TableID, *te)
+					if err != nil {
+						log.Println(err)
+					}
+				}
 			}
+
 		} else {
-			// 如果存在
-			// 如果不等 就设置  怎么降低代价???
-			if !reflect.DeepEqual(*event, *te) {
+			// 非空进行判断
+			me, err := json.Marshal(event)
+			if err != nil {
+				return nil, err
+			}
+			tr, err := json.Marshal(te)
+			if err != nil {
+				return nil, err
+			}
+
+			if string(me) != string(tr) {
 				p.tables[te.TableID] = te
 				err := p.storage.SetTableMapEvent(te.TableID, *te)
 				if err != nil {
@@ -322,11 +355,6 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 		if (re.Flags & RowsEventStmtEndFlag) > 0 {
 			// Refer https://github.com/alibaba/canal/blob/38cc81b7dab29b51371096fb6763ca3a8432ffee/dbsync/src/main/java/com/taobao/tddl/dbsync/binlog/event/RowsLogEvent.java#L176
 			p.tables = make(map[uint64]*TableMapEvent)
-			// 清空
-			err := p.storage.Empty()
-			if err != nil {
-				log.Println(err)
-			}
 		}
 	}
 
