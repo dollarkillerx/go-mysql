@@ -888,7 +888,6 @@ func (e *RowsEvent) Decode(data []byte) (err2 error) {
 			} else {
 				return errors.Annotatef(errMissingTableMapEvent, "table id %d", e.TableID)
 			}
-			return err
 		}
 
 		e.Table = event

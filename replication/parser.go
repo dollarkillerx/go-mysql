@@ -298,10 +298,8 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 	}
 
 	if te, ok := e.(*TableMapEvent); ok {
-
 		event, ex := p.tables[te.TableID]
 		if !ex {
-			// 不存在设置
 			p.tables[te.TableID] = te
 			err := p.storage.SetTableMapEvent(te.TableID, *te)
 			if err != nil {

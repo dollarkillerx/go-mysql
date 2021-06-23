@@ -45,7 +45,7 @@ func main() {
 		UseDecimal:      true,
 	}
 
-	b := replication.NewBinlogSyncer(cfg)
+	//b := replication.NewBinlogSyncer(cfg)
 
 	pos := mysql.Position{Name: *file, Pos: uint32(*pos)}
 	if len(*backupPath) > 0 {
