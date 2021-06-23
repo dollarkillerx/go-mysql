@@ -5,9 +5,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-mysql-org/go-mysql/mysql"
-	"github.com/go-mysql-org/go-mysql/replication"
-	"github.com/go-mysql-org/go-mysql/schema"
+	"github.com/dollarkillerx/go-mysql/mysql"
+	"github.com/dollarkillerx/go-mysql/replication"
+	"github.com/dollarkillerx/go-mysql/schema"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/parser/ast"
 	uuid "github.com/satori/go.uuid"

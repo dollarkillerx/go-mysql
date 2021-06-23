@@ -1,15 +1,17 @@
 # go-mysql
 
+# 破坏性修改   Destructive modification
+
 A pure go library to handle MySQL network protocol and replication.
 
 ![semver](https://img.shields.io/github/v/tag/go-mysql-org/go-mysql)
-![example workflow](https://github.com/go-mysql-org/go-mysql/actions/workflows/ci.yml/badge.svg)
+![example workflow](https://github.com/dollarkillerx/go-mysql/actions/workflows/ci.yml/badge.svg)
 ![gomod version](https://img.shields.io/github/go-mod/go-version/go-mysql-org/go-mysql/master)
 
 ## How to migrate to this repo
 To change the used package in your repo it's enough to add this `replace` directive to your `go.mod`:
 ```
-replace github.com/siddontang/go-mysql => github.com/go-mysql-org/go-mysql v1.3.0
+replace github.com/siddontang/go-mysql => github.com/dollarkillerx/go-mysql v1.3.0
 ```
 
 v1.3.0 - is the last tag in repo, feel free to choose what you want.
@@ -36,7 +38,7 @@ You can use it as a MySQL slave to sync binlog from master then do something, li
 
 ```go
 import (
-	"github.com/go-mysql-org/go-mysql/replication"
+	"github.com/dollarkillerx/go-mysql/replication"
 	"os"
 )
 // Create a binlog syncer with a unique server id, the server id must be different from other MySQL's. 
@@ -124,7 +126,7 @@ package main
 
 import (
 	"github.com/siddontang/go-log/log"
-	"github.com/go-mysql-org/go-mysql/canal"
+	"github.com/dollarkillerx/go-mysql/canal"
 )
 
 type MyEventHandler struct {
@@ -171,7 +173,7 @@ Client package supports a simple MySQL connection driver which you can use it to
 
 ```go
 import (
-	"github.com/go-mysql-org/go-mysql/client"
+	"github.com/dollarkillerx/go-mysql/client"
 )
 
 // Connect MySQL at 127.0.0.1:3306, with user root, an empty password and database test
@@ -247,7 +249,7 @@ err := conn.ExecuteSelectStreaming(`select id, name from table LIMIT 100500`, &r
 
 ```go
 import (
-    "github.com/go-mysql-org/go-mysql/client"
+    "github.com/dollarkillerx/go-mysql/client"
 )
 
 pool := client.NewPool(log.Debugf, 100, 400, 5, "127.0.0.1:3306", `root`, ``, `test`)
@@ -268,7 +270,7 @@ so that most MySQL clients should be able to connect to the Server without modif
 
 ```go
 import (
-	"github.com/go-mysql-org/go-mysql/server"
+	"github.com/dollarkillerx/go-mysql/server"
 	"net"
 )
 
@@ -322,7 +324,7 @@ package main
 import (
 	"database/sql"
 
-	_ "github.com/go-mysql-org/go-mysql/driver"
+	_ "github.com/dollarkillerx/go-mysql/driver"
 )
 
 func main() {

@@ -5,13 +5,14 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"github.com/dgraph-io/badger/v3"
 	"net"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/go-mysql-org/go-mysql/client"
-	. "github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/dollarkillerx/go-mysql/client"
+	. "github.com/dollarkillerx/go-mysql/mysql"
 	"github.com/pingcap/errors"
 	uuid "github.com/satori/go.uuid"
 	"github.com/siddontang/go-log/log"
@@ -134,10 +135,12 @@ type BinlogSyncer struct {
 	lastConnectionID uint32
 
 	retryCount int
+
+	storage *Storage
 }
 
 // NewBinlogSyncer creates the BinlogSyncer with cfg.
-func NewBinlogSyncer(cfg BinlogSyncerConfig) *BinlogSyncer {
+func NewBinlogSyncer(cfg BinlogSyncerConfig, taskID string) (*BinlogSyncer, error) {
 	if cfg.ServerID == 0 {
 		log.Fatal("can't use 0 as the server ID")
 	}
@@ -149,9 +152,13 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig) *BinlogSyncer {
 	cfg.Password = pass
 
 	b := new(BinlogSyncer)
+	err := b.InitDB(taskID)
+	if err != nil {
+		return nil, err
+	}
 
 	b.cfg = cfg
-	b.parser = NewBinlogParser()
+	b.parser = NewBinlogParser(b.storage)
 	b.parser.SetFlavor(cfg.Flavor)
 	b.parser.SetRawMode(b.cfg.RawModeEnabled)
 	b.parser.SetParseTime(b.cfg.ParseTime)
@@ -161,7 +168,21 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig) *BinlogSyncer {
 	b.running = false
 	b.ctx, b.cancel = context.WithCancel(context.Background())
 
-	return b
+	return b, nil
+}
+
+// InitDB init db
+func (b *BinlogSyncer) InitDB(taskID string) error {
+	open, err := badger.Open(badger.DefaultOptions(fmt.Sprintf("./galaxy_schema_%s", taskID)))
+	if err != nil {
+		return err
+	}
+
+	b.storage = &Storage{
+		Db: open,
+	}
+
+	return nil
 }
 
 // Close closes the BinlogSyncer.
@@ -170,6 +191,7 @@ func (b *BinlogSyncer) Close() {
 	defer b.m.Unlock()
 
 	b.close()
+	b.storage.Close()
 }
 
 func (b *BinlogSyncer) close() {

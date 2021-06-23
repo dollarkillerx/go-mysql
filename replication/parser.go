@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"os"
+	"reflect"
 	"sync/atomic"
 	"time"
 
@@ -38,13 +40,15 @@ type BinlogParser struct {
 	useDecimal          bool
 	ignoreJSONDecodeErr bool
 	verifyChecksum      bool
+
+	storage *Storage
 }
 
-func NewBinlogParser() *BinlogParser {
+func NewBinlogParser(storage *Storage) *BinlogParser {
 	p := new(BinlogParser)
 
 	p.tables = make(map[uint64]*TableMapEvent)
-
+	p.storage = storage
 	return p
 }
 
@@ -294,13 +298,37 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 	}
 
 	if te, ok := e.(*TableMapEvent); ok {
-		p.tables[te.TableID] = te
+
+		event, ex := p.tables[te.TableID]
+		if !ex {
+			// 不存在设置
+			p.tables[te.TableID] = te
+			err := p.storage.SetTableMapEvent(te.TableID, *te)
+			if err != nil {
+				log.Println(err)
+			}
+		} else {
+			// 如果存在
+			// 如果不等 就设置  怎么降低代价???
+			if !reflect.DeepEqual(*event, *te) {
+				p.tables[te.TableID] = te
+				err := p.storage.SetTableMapEvent(te.TableID, *te)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		}
 	}
 
 	if re, ok := e.(*RowsEvent); ok {
 		if (re.Flags & RowsEventStmtEndFlag) > 0 {
 			// Refer https://github.com/alibaba/canal/blob/38cc81b7dab29b51371096fb6763ca3a8432ffee/dbsync/src/main/java/com/taobao/tddl/dbsync/binlog/event/RowsLogEvent.java#L176
 			p.tables = make(map[uint64]*TableMapEvent)
+			// 清空
+			err := p.storage.Empty()
+			if err != nil {
+				log.Println(err)
+			}
 		}
 	}
 
@@ -367,6 +395,7 @@ func (p *BinlogParser) newRowsEvent(h *EventHeader) *RowsEvent {
 
 	e.needBitmap2 = false
 	e.tables = p.tables
+	e.storage = p.storage
 	e.parseTime = p.parseTime
 	e.timestampStringLocation = p.timestampStringLocation
 	e.useDecimal = p.useDecimal

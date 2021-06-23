@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/dollarkillerx/go-mysql/mysql"
 )
 
 func TestReadAuthData(t *testing.T) {

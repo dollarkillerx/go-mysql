@@ -14,7 +14,7 @@ import (
 	"github.com/siddontang/go-log/log"
 	"github.com/siddontang/go/hack"
 
-	. "github.com/go-mysql-org/go-mysql/mysql"
+	. "github.com/dollarkillerx/go-mysql/mysql"
 )
 
 var errMissingTableMapEvent = errors.New("invalid table id, no corresponding table map event")
@@ -30,9 +30,9 @@ type TableMapEvent struct {
 	Schema []byte
 	Table  []byte
 
-	ColumnCount uint64
-	ColumnType  []byte
-	ColumnMeta  []uint16
+	ColumnCount uint64   // parse
+	ColumnType  []byte   // parse
+	ColumnMeta  []uint16 // parse
 
 	//len = (ColumnCount + 7) / 8
 	NullBitmap []byte
@@ -817,6 +817,7 @@ type RowsEvent struct {
 
 	tableIDSize int
 	tables      map[uint64]*TableMapEvent
+	storage     *Storage
 	needBitmap2 bool
 
 	Table *TableMapEvent
@@ -879,11 +880,18 @@ func (e *RowsEvent) Decode(data []byte) (err2 error) {
 	var ok bool
 	e.Table, ok = e.tables[e.TableID]
 	if !ok {
-		if len(e.tables) > 0 {
-			return errors.Errorf("invalid table id %d, no corresponding table map event", e.TableID)
-		} else {
-			return errors.Annotatef(errMissingTableMapEvent, "table id %d", e.TableID)
+		// 查询持久层
+		event, err := e.storage.GetTableMapEvent(e.TableID)
+		if err != nil {
+			if len(e.tables) > 0 {
+				return errors.Errorf("invalid table id %d, no corresponding table map event", e.TableID)
+			} else {
+				return errors.Annotatef(errMissingTableMapEvent, "table id %d", e.TableID)
+			}
+			return err
 		}
+
+		e.Table = event
 	}
 
 	var err error

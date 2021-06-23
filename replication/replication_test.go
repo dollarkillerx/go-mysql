@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-mysql-org/go-mysql/client"
-	"github.com/go-mysql-org/go-mysql/mysql"
+	"github.com/dollarkillerx/go-mysql/client"
+	"github.com/dollarkillerx/go-mysql/mysql"
 	. "github.com/pingcap/check"
 	uuid "github.com/satori/go.uuid"
 )
