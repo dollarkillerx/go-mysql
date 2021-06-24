@@ -12,25 +12,25 @@ type Storage struct {
 	Db *badger.DB
 }
 
-func (s *Storage) Close() {
-	s.Db.Close()
-}
+//func (s *Storage) Close() {
+//	s.Db.Close()
+//}
 
-func (s *Storage) Empty() error {
-	return s.Db.Update(func(txn *badger.Txn) error {
-		iterator := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer iterator.Close()
-
-		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
-			err := txn.Delete(iterator.Item().Key())
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-}
+//func (s *Storage) Empty() error {
+//	return s.Db.Update(func(txn *badger.Txn) error {
+//		iterator := txn.NewIterator(badger.DefaultIteratorOptions)
+//		defer iterator.Close()
+//
+//		for iterator.Rewind(); iterator.Valid(); iterator.Next() {
+//			err := txn.Delete(iterator.Item().Key())
+//			if err != nil {
+//				return err
+//			}
+//		}
+//
+//		return nil
+//	})
+//}
 
 func (s *Storage) Set(key []byte, val []byte) error {
 	return s.Db.Update(func(txn *badger.Txn) error {
@@ -58,19 +58,45 @@ func (s *Storage) Get(key string) (value []byte, err error) {
 	})
 }
 
-func (s *Storage) SetTableMapEvent(key uint64, val TableMapEvent) error {
-	ks := fmt.Sprintf("%d", key)
+func (s *Storage) GetXID(schema []byte, table []byte) string {
+	return fmt.Sprintf("mysql_schema_%s.%s", schema, table)
+}
+
+func (s *Storage) SetTableMapEvent(xid string, val TableMapEvent) error {
 	mr, err := json.Marshal(val)
 	if err != nil {
 		return err
 	}
 
-	return s.Set([]byte(ks), mr)
+	return s.Set([]byte(xid), mr)
 }
 
-func (s *Storage) GetTableMapEvent(key uint64) (*TableMapEvent, error) {
-	ks := fmt.Sprintf("%d", key)
-	get, err := s.Get(ks)
+func (s *Storage) GetUpdateID(schema []byte, table []byte) string {
+	return fmt.Sprintf("update_schema_%s.%s", schema, table)
+}
+
+func (s *Storage) GetUpdateSignal(updateID string) bool {
+	get, err := s.Get(updateID)
+	if err != nil {
+		return false
+	}
+
+	switch string(get) {
+	case "True":
+		return true
+	//case "False":
+	//	return false
+	default:
+		return false
+	}
+}
+
+func (s *Storage) SetUpdateSignal(updateID string, signal string) error {
+	return s.Set([]byte(updateID), []byte(signal))
+}
+
+func (s *Storage) GetTableMapEvent(xid string) (*TableMapEvent, error) {
+	get, err := s.Get(xid)
 	if err != nil {
 		return nil, err
 	}

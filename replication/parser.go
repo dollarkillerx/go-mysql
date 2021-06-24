@@ -3,11 +3,9 @@ package replication
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
-	"log"
 	"os"
 	"sync/atomic"
 	"time"
@@ -26,7 +24,8 @@ type BinlogParser struct {
 
 	format *FormatDescriptionEvent
 
-	tables map[uint64]*TableMapEvent
+	tables    map[uint64]*TableMapEvent // tableID, TableMapEvent
+	tablesMap map[string]struct{}       // schema.table.tableID, struct{}
 
 	// for rawMode, we only parse FormatDescriptionEvent and RotateEvent
 	rawMode bool
@@ -48,6 +47,7 @@ func NewBinlogParser(storage *Storage) *BinlogParser {
 	p := new(BinlogParser)
 
 	p.tables = make(map[uint64]*TableMapEvent)
+	p.tablesMap = make(map[string]struct{})
 	p.storage = storage
 	return p
 }
@@ -292,61 +292,44 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 			e = &GenericEvent{}
 		}
 	}
-
+	// 尝试解析
 	if err := e.Decode(data); err != nil {
 		return nil, &EventError{h, err.Error(), data}
 	}
 
 	if te, ok := e.(*TableMapEvent); ok {
-		event, ex := p.tables[te.TableID]
+		p.tables[te.TableID] = te
+
+		xID := getTableMapID(te.Schema, te.Table, te.TableID)
+		_, ex := p.tablesMap[xID]
 		if !ex {
-			p.tables[te.TableID] = te
+			// 初始化设置
+			p.tablesMap[xID] = struct{}{}
 
-			// 他清空太频繁了 io成本非常高
-			mapEvent, err := p.storage.GetTableMapEvent(te.TableID)
+			err := p.storage.SetTableMapEvent(p.storage.GetXID(te.Schema, te.Table), *te)
 			if err != nil {
-				// 空的
-				err := p.storage.SetTableMapEvent(te.TableID, *te)
-				if err != nil {
-					log.Println(err)
-				}
-			} else {
-				// 非空进行判断
-				me, err := json.Marshal(mapEvent)
-				if err != nil {
-					return nil, err
-				}
-				tr, err := json.Marshal(te)
-				if err != nil {
-					return nil, err
-				}
-
-				if string(me) != string(tr) {
-					p.tables[te.TableID] = te
-					err := p.storage.SetTableMapEvent(te.TableID, *te)
-					if err != nil {
-						log.Println(err)
-					}
-				}
+				fmt.Println(err)
+				return nil, err
 			}
 
+			fmt.Printf("MySQL Table Init Schema: %s Table: %s XID: %d \n", te.Schema, te.Table, te.TableID)
 		} else {
-			// 非空进行判断
-			me, err := json.Marshal(event)
-			if err != nil {
-				return nil, err
-			}
-			tr, err := json.Marshal(te)
-			if err != nil {
-				return nil, err
-			}
-
-			if string(me) != string(tr) {
-				p.tables[te.TableID] = te
-				err := p.storage.SetTableMapEvent(te.TableID, *te)
+			// 查询 db 是否更改
+			updateID := p.storage.GetUpdateID(te.Schema, te.Table)
+			signal := p.storage.GetUpdateSignal(updateID) // 检测是否存在更新信号
+			if signal {                                   // 存在进行更新
+				err := p.storage.SetTableMapEvent(p.storage.GetXID(te.Schema, te.Table), *te)
 				if err != nil {
-					log.Println(err)
+					fmt.Println(err)
+					return nil, err
 				}
+
+				err = p.storage.SetUpdateSignal(updateID, "False") // 并关闭当前信号
+				if err != nil {
+					return nil, err
+				}
+
+				fmt.Printf("MySQL Table UPDATE Schema: %s Table: %s XID: %d \n", te.Schema, te.Table, te.TableID)
 			}
 		}
 	}
@@ -355,10 +338,15 @@ func (p *BinlogParser) parseEvent(h *EventHeader, data []byte, rawData []byte) (
 		if (re.Flags & RowsEventStmtEndFlag) > 0 {
 			// Refer https://github.com/alibaba/canal/blob/38cc81b7dab29b51371096fb6763ca3a8432ffee/dbsync/src/main/java/com/taobao/tddl/dbsync/binlog/event/RowsLogEvent.java#L176
 			p.tables = make(map[uint64]*TableMapEvent)
+			//p.tablesMap = make(map[string]*TableMapEvent)
 		}
 	}
 
 	return e, nil
+}
+
+func getTableMapID(schema, table []byte, tableID uint64) string {
+	return fmt.Sprintf("%s.%s.%d", schema, table, tableID)
 }
 
 // Parse: Given the bytes for a a binary log event: return the decoded event.

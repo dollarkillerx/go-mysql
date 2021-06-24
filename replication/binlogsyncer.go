@@ -5,12 +5,13 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
-	"github.com/dgraph-io/badger/v3"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/dgraph-io/badger/v3"
 	"github.com/dollarkillerx/go-mysql/client"
 	. "github.com/dollarkillerx/go-mysql/mysql"
 	"github.com/pingcap/errors"
@@ -140,7 +141,7 @@ type BinlogSyncer struct {
 }
 
 // NewBinlogSyncer creates the BinlogSyncer with cfg.
-func NewBinlogSyncer(cfg BinlogSyncerConfig, taskID string) (*BinlogSyncer, error) {
+func NewBinlogSyncer(cfg BinlogSyncerConfig, db *badger.DB) (*BinlogSyncer, error) {
 	if cfg.ServerID == 0 {
 		log.Fatal("can't use 0 as the server ID")
 	}
@@ -152,11 +153,7 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig, taskID string) (*BinlogSyncer, erro
 	cfg.Password = pass
 
 	b := new(BinlogSyncer)
-	err := b.InitDB(taskID)
-	if err != nil {
-		return nil, err
-	}
-
+	b.initDB(db)
 	b.cfg = cfg
 	b.parser = NewBinlogParser(b.storage)
 	b.parser.SetFlavor(cfg.Flavor)
@@ -172,17 +169,10 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig, taskID string) (*BinlogSyncer, erro
 }
 
 // InitDB init db
-func (b *BinlogSyncer) InitDB(taskID string) error {
-	open, err := badger.Open(badger.DefaultOptions(fmt.Sprintf("./galaxy_schema_%s", taskID)))
-	if err != nil {
-		return err
-	}
-
+func (b *BinlogSyncer) initDB(db *badger.DB) {
 	b.storage = &Storage{
-		Db: open,
+		Db: db,
 	}
-
-	return nil
 }
 
 // Close closes the BinlogSyncer.
@@ -191,7 +181,6 @@ func (b *BinlogSyncer) Close() {
 	defer b.m.Unlock()
 
 	b.close()
-	b.storage.Close()
 }
 
 func (b *BinlogSyncer) close() {
@@ -833,6 +822,9 @@ func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 		event.GSet = getCurrentGtidSet()
 	case *QueryEvent:
 		event.GSet = getCurrentGtidSet()
+
+		// 数据更新信号量处理
+		b.tableSchemaUpdate(event)
 	}
 
 	needStop := false
@@ -854,6 +846,38 @@ func (b *BinlogSyncer) parseEvent(s *BinlogStreamer, data []byte) error {
 	}
 
 	return nil
+}
+
+func (b *BinlogSyncer) tableSchemaUpdate(event *QueryEvent) {
+	query := string(event.Query)
+	bakQuery := strings.ToLower(query)
+
+	alterTable := "alter table"
+	index := strings.Index(bakQuery, alterTable)
+	if index == -1 {
+		return
+	}
+
+	query = strings.TrimSpace(query[index:])
+	qKv := strings.Split(query, " ")
+	if len(qKv) >= 3 {
+		table := qKv[2]
+		schema := string(event.Schema)
+
+		if strings.Index(table, ".") != -1 {
+			split := strings.Split(table, ".")
+			schema = split[0]
+			table = split[1]
+		}
+
+		err := b.storage.SetUpdateSignal(b.storage.GetUpdateID([]byte(schema), []byte(table)), "True")
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Printf("Schema: %s Table: %s   SCHEMA UPDATE \n", schema, table)
+	}
 }
 
 // LastConnectionID returns last connectionID.

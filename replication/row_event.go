@@ -878,10 +878,11 @@ func (e *RowsEvent) Decode(data []byte) (err2 error) {
 	}
 
 	var ok bool
+	//e.Table.Schema e.Table.Table
 	e.Table, ok = e.tables[e.TableID]
 	if !ok {
 		// 查询持久层
-		event, err := e.storage.GetTableMapEvent(e.TableID)
+		event, err := e.storage.GetTableMapEvent(e.storage.GetXID(e.Table.Schema, e.Table.Table))
 		if err != nil {
 			if len(e.tables) > 0 {
 				return errors.Errorf("invalid table id %d, no corresponding table map event", e.TableID)
