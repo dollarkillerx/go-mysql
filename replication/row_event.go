@@ -881,8 +881,7 @@ func (e *RowsEvent) Decode(data []byte) (err2 error) {
 	//e.Table.Schema e.Table.Table
 	e.Table, ok = e.tables[e.TableID]
 	if !ok {
-		// 查询持久层
-		event, err := e.storage.GetTableMapEvent(e.storage.GetXID(e.Table.Schema, e.Table.Table))
+		event, err := e.storage.GetTableMapEvent(e.storage.GetTableID(e.TableID))
 		if err != nil {
 			if len(e.tables) > 0 {
 				return errors.Errorf("invalid table id %d, no corresponding table map event", e.TableID)
@@ -1001,7 +1000,6 @@ func (e *RowsEvent) parseFracTime(t interface{}) interface{} {
 // see mysql sql/log_event.cc log_event_print_value
 func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{}, n int, err error) {
 	var length int = 0
-
 	if tp == MYSQL_TYPE_STRING {
 		if meta >= 256 {
 			b0 := uint8(meta >> 8)
@@ -1138,9 +1136,13 @@ func (e *RowsEvent) decodeValue(data []byte, tp byte, meta uint16) (v interface{
 
 		v, err = littleDecodeBit(data, nbits, n)
 	case MYSQL_TYPE_BLOB:
-		v, n, err = decodeBlob(data, meta)
+		//fmt.Println("MYSQL_TYPE_BLOB")  TEXTLONG type 就是这个
+		blob, i, err2 := decodeBlob(data, meta)
+		v, n, err = string(blob), i, err2
+
 	case MYSQL_TYPE_VARCHAR,
 		MYSQL_TYPE_VAR_STRING:
+
 		length = int(meta)
 		v, n = decodeString(data, length)
 	case MYSQL_TYPE_STRING:

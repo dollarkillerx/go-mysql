@@ -141,7 +141,7 @@ type BinlogSyncer struct {
 }
 
 // NewBinlogSyncer creates the BinlogSyncer with cfg.
-func NewBinlogSyncer(cfg BinlogSyncerConfig, db *badger.DB) (*BinlogSyncer, error) {
+func NewBinlogSyncer(cfg BinlogSyncerConfig, db *badger.DB, serverID string) (*BinlogSyncer, error) {
 	if cfg.ServerID == 0 {
 		log.Fatal("can't use 0 as the server ID")
 	}
@@ -153,7 +153,7 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig, db *badger.DB) (*BinlogSyncer, erro
 	cfg.Password = pass
 
 	b := new(BinlogSyncer)
-	b.initDB(db)
+	b.initDB(db, serverID)
 	b.cfg = cfg
 	b.parser = NewBinlogParser(b.storage)
 	b.parser.SetFlavor(cfg.Flavor)
@@ -169,9 +169,10 @@ func NewBinlogSyncer(cfg BinlogSyncerConfig, db *badger.DB) (*BinlogSyncer, erro
 }
 
 // InitDB init db
-func (b *BinlogSyncer) initDB(db *badger.DB) {
+func (b *BinlogSyncer) initDB(db *badger.DB, serverID string) {
 	b.storage = &Storage{
-		Db: db,
+		Db:       db,
+		ServerID: serverID,
 	}
 }
 

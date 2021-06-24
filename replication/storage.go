@@ -9,7 +9,8 @@ import (
 )
 
 type Storage struct {
-	Db *badger.DB
+	Db       *badger.DB
+	ServerID string
 }
 
 //func (s *Storage) Close() {
@@ -40,6 +41,12 @@ func (s *Storage) Set(key []byte, val []byte) error {
 	})
 }
 
+func (s *Storage) Del(key []byte) (err error) {
+	return s.Db.Update(func(txn *badger.Txn) error {
+		return txn.Delete(key)
+	})
+}
+
 func (s *Storage) Get(key string) (value []byte, err error) {
 	return value, s.Db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key))
@@ -59,7 +66,11 @@ func (s *Storage) Get(key string) (value []byte, err error) {
 }
 
 func (s *Storage) GetXID(schema []byte, table []byte) string {
-	return fmt.Sprintf("mysql_schema_%s.%s", schema, table)
+	return fmt.Sprintf("schema.mapping.%s.%s.%s", s.ServerID, schema, table)
+}
+
+func (s *Storage) GetTableID(tableID uint64) string {
+	return fmt.Sprintf("schema.%s.%d", s.ServerID, tableID)
 }
 
 func (s *Storage) SetTableMapEvent(xid string, val TableMapEvent) error {
@@ -68,7 +79,27 @@ func (s *Storage) SetTableMapEvent(xid string, val TableMapEvent) error {
 		return err
 	}
 
-	return s.Set([]byte(xid), mr)
+	// 检测是否存在
+	old, err := s.Get(xid)
+	if err == nil {
+		err := s.Del(old)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	newID := s.GetTableID(val.TableID)
+	// 二层映射
+	// 第一层: schema.mapping.server_id.schema.table
+	// 第二层: schema.server_id.table_id
+
+	err = s.Set([]byte(xid), []byte(newID))
+	if err != nil {
+		fmt.Println(err)
+		return errors.WithStack(err)
+	}
+
+	return s.Set([]byte(newID), mr)
 }
 
 func (s *Storage) GetUpdateID(schema []byte, table []byte) string {
